@@ -20,12 +20,14 @@ export function createGlobe() {
   });
   const globeMesh = new THREE.Mesh(globeGeometry, globeMaterial);
 
-  // Night layer with enhanced emissive effect
+  // Night layer with orangish lights
   const nightGeometry = new THREE.SphereGeometry(5.01, 64, 64); // Slightly larger to avoid z-fighting
   const nightMaterial = new THREE.ShaderMaterial({
     uniforms: {
       map: { value: nightTexture }, // Texture for the night map
+      time: { value: 0.0 }, // Time uniform for animation
       emissiveBoost: { value: 2.5 }, // Boost emissive brightness
+      sparkleIntensity: { value: 1.5 }, // Sparkle intensity
     },
     vertexShader: `
       varying vec2 vUv;
@@ -37,20 +39,31 @@ export function createGlobe() {
     fragmentShader: `
       varying vec2 vUv;
       uniform sampler2D map;
+      uniform float time;
       uniform float emissiveBoost;
+      uniform float sparkleIntensity;
+
       void main() {
         vec4 texColor = texture2D(map, vUv);
 
         // Calculate brightness of the pixel (perceived luminance)
         float brightness = dot(texColor.rgb, vec3(0.2126, 0.7152, 0.0722));
 
-        // Discard pixels that are too dark to enhance transparency
+        // Create a sparkle effect using a sine wave and random noise
+        float sparkle = sin(time * 4.75 + vUv.x * 10.0 + vUv.y * 10.0) * 0.5 + 0.5;
+        sparkle *= sparkleIntensity;
+
+        // Adjust brightness for emission and sparkle
+        brightness = brightness * emissiveBoost + sparkle * brightness;
+
+        // Discard pixels that are too dark for transparency
         if (brightness < 0.05) discard;
 
-        // Amplify the brightness to create a glowing effect
-        vec3 emissiveColor = texColor.rgb * emissiveBoost * brightness;
+        // Shift colors toward orangish hue
+        vec3 orangishColor = vec3(1.0, 0.6, 0.2); // RGB for orangish tone
+        vec3 finalColor = mix(texColor.rgb, orangishColor, 0.8); // Blend original with orangish color
 
-        gl_FragColor = vec4(emissiveColor, brightness); // Adjust transparency based on brightness
+        gl_FragColor = vec4(finalColor * brightness, brightness); // Adjust transparency based on brightness
       }
     `,
     transparent: true,
@@ -72,7 +85,7 @@ export function createGlobe() {
       varying vec3 vNormal;
       void main() {
         float intensity = pow(0.9 - dot(vNormal, vec3(0.0, 0.0, 1.0)), 3.0);
-        gl_FragColor = vec4(0.3, 0.7, 1.0, 1.0) * intensity; // Soft blue glow
+        gl_FragColor = vec4(1, 0.6, 0, 1.0) * intensity; // Soft blue glow
       }
     `,
     blending: THREE.AdditiveBlending,
@@ -99,6 +112,14 @@ export function createGlobe() {
   directionalLight2.castShadow = true;
 
   globeGroup.add(ambientLight, pointLight, directionalLight1, directionalLight2);
+
+  // Animate the sparkle effect
+  const clock = new THREE.Clock();
+  function updateNightMaterial() {
+    nightMaterial.uniforms.time.value = clock.getElapsedTime();
+    requestAnimationFrame(updateNightMaterial);
+  }
+  updateNightMaterial();
 
   return globeGroup;
 }
