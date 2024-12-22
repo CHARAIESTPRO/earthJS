@@ -1,15 +1,17 @@
 import * as THREE from 'three';
 
-export function loadPoints(globeGroup) {
-  fetch('../assets/data/points.json')
-    .then(response => response.json())
-    .then(points => {
-      points.forEach(point => addGlowyRhombus(globeGroup, point.lat, point.lon));
-    })
-    .catch(error => console.error('Error loading points:', error));
+export function loadPoints(globeGroup, userLocation) {
+  // Extract data from the userLocation
+  const { latitude, longitude, country } = userLocation;
+
+  // Assume 1 connected user (or dynamic data from elsewhere)
+  const connected = 1;
+
+  // Add a single point for the user's location
+  addGlowyRhombus(globeGroup, latitude, longitude, country, connected);
 }
 
-function addGlowyRhombus(globeGroup, lat, lon) {
+function addGlowyRhombus(globeGroup, lat, lon, countryName, connected) {
   const radius = 5; // Globe radius
   const phi = (90 - lat) * (Math.PI / 180); // Convert latitude to phi
   const theta = (lon + 180) * (Math.PI / 180); // Convert longitude to theta
@@ -43,7 +45,7 @@ function addGlowyRhombus(globeGroup, lat, lon) {
   const glowMaterial = new THREE.ShaderMaterial({
     uniforms: {
       time: { value: 0.0 },
-      color: { value: new THREE.Color(0x00FF00) }, // Green color
+      color: { value: new THREE.Color(0x00FFFF) }, // Green color
       intensityMultiplier: { value: 3.0 }, // Tripled emission intensity
     },
     vertexShader: `
@@ -73,6 +75,9 @@ function addGlowyRhombus(globeGroup, lat, lon) {
   pointGroup.add(rhombus, glow);
   pointGroup.position.set(x, y, z);
 
+  // Add tooltip functionality
+  pointGroup.userData = { country: countryName, connected };
+
   // Add the group to the globe
   globeGroup.add(pointGroup);
 
@@ -83,4 +88,36 @@ function addGlowyRhombus(globeGroup, lat, lon) {
     requestAnimationFrame(animateGlow);
   }
   animateGlow();
+
+  // Hover functionality
+  const tooltip = document.createElement('div');
+  tooltip.style.position = 'absolute';
+  tooltip.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+  tooltip.style.color = '#fff';
+  tooltip.style.padding = '5px 10px';
+  tooltip.style.borderRadius = '5px';
+  tooltip.style.display = 'none';
+  tooltip.style.pointerEvents = 'none';
+  document.body.appendChild(tooltip);
+
+  window.addEventListener('mousemove', (event) => {
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+    mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+    raycaster.setFromCamera(mouse, camera);
+
+    const intersects = raycaster.intersectObject(pointGroup, true);
+    if (intersects.length > 0) {
+      const { country, connected } = pointGroup.userData;
+      tooltip.style.display = 'block';
+      tooltip.style.left = `${event.clientX + 10}px`;
+      tooltip.style.top = `${event.clientY + 10}px`;
+      tooltip.textContent = `${country}: ${connected} connected`;
+    } else {
+      tooltip.style.display = 'none';
+    }
+  });
 }

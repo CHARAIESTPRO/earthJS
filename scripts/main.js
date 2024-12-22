@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 
 import { createGlobe } from './globe.js';
-import { loadPoints } from './points.js';
+import { loadPoints } from './points.js'; // This will be updated to handle IPinfo
 import { loadConnections } from './connections.js';
 
 const scene = new THREE.Scene();
@@ -32,8 +32,26 @@ scene.add(light);
 const globeGroup = createGlobe();
 scene.add(globeGroup);
 
-// Load Points and Connections
-loadPoints(globeGroup);
+// Fetch User Location Using IPinfo API
+async function fetchUserLocation() {
+  try {
+    const response = await fetch('https://ipinfo.io/json?token=YOUR_API_TOKEN'); // Replace with your IPinfo token
+    if (!response.ok) throw new Error('Failed to fetch geolocation data');
+    
+    const data = await response.json();
+    const [latitude, longitude] = data.loc.split(',').map(coord => parseFloat(coord));
+
+    // Dynamically add the user's location to the globe
+    loadPoints(globeGroup, { country: data.country, latitude, longitude });
+  } catch (error) {
+    console.error('Error fetching geolocation data:', error);
+  }
+}
+
+// Call the IPinfo API
+fetchUserLocation();
+
+// Load Connections (Optional, if applicable)
 loadConnections(globeGroup);
 
 // Position Camera
