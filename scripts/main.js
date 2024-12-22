@@ -14,8 +14,6 @@ document.body.appendChild(renderer.domElement);
 
 // Orbit Controls
 const controls = new OrbitControls(camera, renderer.domElement);
-
-// Enhance Orbit Controls
 controls.enableDamping = true;
 controls.dampingFactor = 0.05;
 controls.minDistance = 10;
@@ -37,36 +35,39 @@ const globeGroup = createGlobe();
 scene.add(globeGroup);
 
 // Load UFO
-function loadUFO(scene) {
+function loadUFO(scene, unknownCount) {
   const loader = new FBXLoader();
 
   loader.load('../assets/3d/ufo.fbx', (object) => {
-    // Scale the UFO 1.8x larger
-    object.scale.set(0.0009, 0.0009, 0.0009); // Increased size by 1.8x
+    object.scale.set(0.0009, 0.0009, 0.0009); // Adjust size
 
-    const radius = 5;
-    const midpointLat = 15;
-    const midpointLon = -30;
+    const radius = 5; // Globe radius
+    const londonLat = 51.5074; // Latitude for London
+    const londonLon = -0.1278; // Longitude for London
 
-    const phi = (90 - midpointLat) * (Math.PI / 180);
-    const theta = (midpointLon + 180) * (Math.PI / 180);
-    const x = -radius * Math.sin(phi) * Math.cos(theta);
-    const y = radius * Math.cos(phi);
-    const z = radius * Math.sin(phi) * Math.sin(theta);
+    // Function to convert lat/lon to 3D coordinates
+    function latLonToXYZ(lat, lon, altitude = 0.64) { // Reduced altitude by 20% (0.8 -> 0.64)
+      const phi = (90 - lat) * (Math.PI / 180);
+      const theta = (lon + 180) * (Math.PI / 180);
+      const x = -(radius + altitude) * Math.sin(phi) * Math.cos(theta);
+      const y = (radius + altitude) * Math.cos(phi);
+      const z = (radius + altitude) * Math.sin(phi) * Math.sin(theta);
+      return { x, y, z };
+    }
 
-    // Position the UFO slightly higher above the surface
-    object.position.set(x, y + 0.9, z); // Adjusted height to `y + 0.9`
+    // Set UFO position
+    const ufoPosition = latLonToXYZ(londonLat, londonLon);
+    object.position.set(ufoPosition.x, ufoPosition.y, ufoPosition.z);
 
     const globeCenter = new THREE.Vector3(0, 0, 0);
     object.lookAt(globeCenter);
     object.rotateX(Math.PI / 2);
     object.rotateZ(Math.PI);
 
+    // Add UFO animation
     const mixer = new THREE.AnimationMixer(object);
-    const action = mixer.clipAction(object.animations[0]);
+    const action = mixer.clipAction(object.animations[0]); // Assuming the first animation is valid
     action.play();
-
-    scene.add(object);
 
     const clock = new THREE.Clock();
     function animateUFO() {
@@ -75,6 +76,40 @@ function loadUFO(scene) {
       requestAnimationFrame(animateUFO);
     }
     animateUFO();
+
+    // Add UFO to the scene
+    scene.add(object);
+
+    // Tooltip logic
+    const tooltip = document.createElement('div');
+    tooltip.style.position = 'absolute';
+    tooltip.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+    tooltip.style.color = '#fff';
+    tooltip.style.padding = '5px 10px';
+    tooltip.style.borderRadius = '5px';
+    tooltip.style.display = 'none';
+    tooltip.style.pointerEvents = 'none';
+    document.body.appendChild(tooltip);
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    window.addEventListener('mousemove', (event) => {
+      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const intersects = raycaster.intersectObject(object, true);
+
+      if (intersects.length > 0) {
+        tooltip.style.display = 'block';
+        tooltip.style.left = `${event.clientX + 10}px`;
+        tooltip.style.top = `${event.clientY + 10}px`;
+        tooltip.textContent = `Unknown IPs: ${unknownCount}`;
+      } else {
+        tooltip.style.display = 'none';
+      }
+    });
   },
   undefined,
   (error) => {
@@ -82,7 +117,7 @@ function loadUFO(scene) {
   });
 }
 
-// Fetch User Location Using IPinfo API
+// Fetch User Location
 async function fetchUserLocation() {
   try {
     const response = await fetch('https://ipinfo.io/json?token=YOUR_API_TOKEN'); // Replace with your IPinfo token
@@ -92,15 +127,21 @@ async function fetchUserLocation() {
     const [latitude, longitude] = data.loc.split(',').map(coord => parseFloat(coord));
 
     loadPoints(globeGroup, { country: data.country, latitude, longitude });
+    return { known: 1, unknown: 0 }; // Example mock data
   } catch (error) {
     console.error('Error fetching geolocation data:', error);
+    return { known: 0, unknown: 1 }; // Assume IP is unknown in case of failure
   }
 }
 
 // Initialize Scene
-fetchUserLocation();
-loadUFO(scene);
-loadConnections(globeGroup);
+async function initializeScene() {
+  const { known, unknown } = await fetchUserLocation();
+  loadUFO(scene, unknown); // Pass unknown IP count to the UFO function
+  loadConnections(globeGroup);
+}
+
+initializeScene();
 
 // Position Camera
 camera.position.set(0, 10, 15);
