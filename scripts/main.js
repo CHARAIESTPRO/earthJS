@@ -1,10 +1,15 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { FBXLoader } from 'three/examples/jsm/loaders/FBXLoader.js';
+import { Connection, PublicKey } from '@solana/web3.js';
 
 import { createGlobe } from './globe.js';
 import { loadPoints } from './points.js';
 import { loadConnections } from './connections.js';
+
+const TOKEN_MINT_ADDRESS = '9vR63dUzh61ohVZFvXEX7HXT39JeeoB7jEpKuGEtpump';
+const SOLANA_RPC_URL = 'https://cold-hanni-fast-mainnet.helius-rpc.com/';
+const connection = new Connection(SOLANA_RPC_URL);
 
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
@@ -23,7 +28,7 @@ controls.minPolarAngle = Math.PI / 4;
 controls.maxPolarAngle = Math.PI / 2;
 
 // Add Light
-const ambientLight = new THREE.AmbientLight(0xffffff, 0.5); // Soft ambient light
+const ambientLight = new THREE.AmbientLight(0xffffff, 0.5);
 scene.add(ambientLight);
 
 const directionalLight = new THREE.DirectionalLight(0xffffff, 1);
@@ -34,19 +39,48 @@ scene.add(directionalLight);
 const globeGroup = createGlobe();
 scene.add(globeGroup);
 
+// Fetch User Location with Token Check
+async function fetchUserLocationWithTokenCheck(walletAddress) {
+  console.log(`Checking token ownership for wallet: ${walletAddress}`);
+  try {
+    const accounts = await connection.getParsedTokenAccountsByOwner(
+      new PublicKey(walletAddress),
+      { mint: new PublicKey(TOKEN_MINT_ADDRESS) }
+    );
+
+    if (accounts.value.length > 0) {
+      console.log('User owns the required token. Proceeding to fetch location...');
+      const response = await fetch('https://ipinfo.io/json?token=8f47b686c73c80');
+      if (!response.ok) throw new Error('Failed to fetch geolocation data');
+
+      const data = await response.json();
+      const [latitude, longitude] = data.loc.split(',').map(coord => parseFloat(coord));
+
+      loadPoints(globeGroup, { country: data.country, latitude, longitude });
+      return { known: 1, unknown: 0 };
+    } else {
+      console.log('User does not own the required token.');
+      alert('You do not own the required token.');
+      return { known: 0, unknown: 1 };
+    }
+  } catch (error) {
+    console.error('Error during token ownership check or geolocation fetch:', error);
+    return { known: 0, unknown: 1 };
+  }
+}
+
 // Load UFO
 function loadUFO(scene, unknownCount) {
   const loader = new FBXLoader();
 
   loader.load('../assets/3d/ufo.fbx', (object) => {
-    object.scale.set(0.0009, 0.0009, 0.0009); // Adjust size
+    object.scale.set(0.0009, 0.0009, 0.0009);
 
-    const radius = 5; // Globe radius
-    const londonLat = 51.5074; // Latitude for London
-    const londonLon = -0.1278; // Longitude for London
+    const radius = 5;
+    const londonLat = 51.5074;
+    const londonLon = -0.1278;
 
-    // Function to convert lat/lon to 3D coordinates
-    function latLonToXYZ(lat, lon, altitude = 0.64) { // Reduced altitude by 20% (0.8 -> 0.64)
+    function latLonToXYZ(lat, lon, altitude = 0.64) {
       const phi = (90 - lat) * (Math.PI / 180);
       const theta = (lon + 180) * (Math.PI / 180);
       const x = -(radius + altitude) * Math.sin(phi) * Math.cos(theta);
@@ -55,7 +89,6 @@ function loadUFO(scene, unknownCount) {
       return { x, y, z };
     }
 
-    // Set UFO position
     const ufoPosition = latLonToXYZ(londonLat, londonLon);
     object.position.set(ufoPosition.x, ufoPosition.y, ufoPosition.z);
 
@@ -64,52 +97,7 @@ function loadUFO(scene, unknownCount) {
     object.rotateX(Math.PI / 2);
     object.rotateZ(Math.PI);
 
-    // Add UFO animation
-    const mixer = new THREE.AnimationMixer(object);
-    const action = mixer.clipAction(object.animations[0]); // Assuming the first animation is valid
-    action.play();
-
-    const clock = new THREE.Clock();
-    function animateUFO() {
-      const delta = clock.getDelta();
-      mixer.update(delta);
-      requestAnimationFrame(animateUFO);
-    }
-    animateUFO();
-
-    // Add UFO to the scene
     scene.add(object);
-
-    // Tooltip logic
-    const tooltip = document.createElement('div');
-    tooltip.style.position = 'absolute';
-    tooltip.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
-    tooltip.style.color = '#fff';
-    tooltip.style.padding = '5px 10px';
-    tooltip.style.borderRadius = '5px';
-    tooltip.style.display = 'none';
-    tooltip.style.pointerEvents = 'none';
-    document.body.appendChild(tooltip);
-
-    const raycaster = new THREE.Raycaster();
-    const mouse = new THREE.Vector2();
-
-    window.addEventListener('mousemove', (event) => {
-      mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
-      mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
-
-      raycaster.setFromCamera(mouse, camera);
-      const intersects = raycaster.intersectObject(object, true);
-
-      if (intersects.length > 0) {
-        tooltip.style.display = 'block';
-        tooltip.style.left = `${event.clientX + 10}px`;
-        tooltip.style.top = `${event.clientY + 10}px`;
-        tooltip.textContent = `Unknown IPs: ${unknownCount}`;
-      } else {
-        tooltip.style.display = 'none';
-      }
-    });
   },
   undefined,
   (error) => {
@@ -117,31 +105,40 @@ function loadUFO(scene, unknownCount) {
   });
 }
 
-// Fetch User Location
-async function fetchUserLocation() {
-  try {
-    const response = await fetch('https://ipinfo.io/json?token=YOUR_API_TOKEN'); // Replace with your IPinfo token
-    if (!response.ok) throw new Error('Failed to fetch geolocation data');
-    
-    const data = await response.json();
-    const [latitude, longitude] = data.loc.split(',').map(coord => parseFloat(coord));
-
-    loadPoints(globeGroup, { country: data.country, latitude, longitude });
-    return { known: 1, unknown: 0 }; // Example mock data
-  } catch (error) {
-    console.error('Error fetching geolocation data:', error);
-    return { known: 0, unknown: 1 }; // Assume IP is unknown in case of failure
-  }
-}
-
 // Initialize Scene
-async function initializeScene() {
-  const { known, unknown } = await fetchUserLocation();
-  loadUFO(scene, unknown); // Pass unknown IP count to the UFO function
+async function initializeScene(walletAddress) {
+  const { known, unknown } = await fetchUserLocationWithTokenCheck(walletAddress);
+  loadUFO(scene, unknown);
   loadConnections(globeGroup);
 }
 
-initializeScene();
+// Wallet Connection
+async function connectWallet() {
+  console.log('Connecting to wallet...');
+  try {
+    const { solana } = window;
+
+    if (solana && solana.isPhantom) {
+      const response = await solana.connect();
+      const walletAddress = response.publicKey.toString();
+      console.log(`Wallet connected: ${walletAddress}`);
+
+      // Update button text
+      const walletButton = document.getElementById('connect-wallet');
+      walletButton.textContent = `${walletAddress.slice(0, 4)}...${walletAddress.slice(-4)}`;
+
+      initializeScene(walletAddress);
+    } else {
+      console.log('Phantom wallet not found.');
+      alert('Phantom wallet not found. Please install it.');
+    }
+  } catch (error) {
+    console.error('Error connecting wallet:', error);
+  }
+}
+
+// Add Wallet Connection Button Event Listener
+document.getElementById('connect-wallet').addEventListener('click', connectWallet);
 
 // Position Camera
 camera.position.set(0, 10, 15);

@@ -6,11 +6,41 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>3D Globe</title>
   <style>
-    body { margin: 0; overflow: hidden; }
-    canvas { display: block; }
+    body {
+      margin: 0;
+      overflow: hidden;
+      font-family: Arial, sans-serif;
+    }
+
+    canvas {
+      display: block;
+    }
+
+    /* Wallet Button Styling */
+    #connect-wallet {
+      position: absolute;
+      top: 20px;
+      left: 20px;
+      padding: 10px 20px;
+      font-size: 16px;
+      color: white;
+      background-color: #007bff;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      z-index: 1000;
+    }
+
+    #connect-wallet:hover {
+      background-color: #0056b3;
+    }
   </style>
 </head>
 <body>
+  <!-- Wallet Connection Button -->
+  <button id="connect-wallet">Connect Wallet</button>
+
+  <!-- Main JavaScript -->
   <script type="module" src="./scripts/main.js"></script>
 </body>
 </html>
